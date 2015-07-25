@@ -50,24 +50,34 @@ var checkFixTree = function(properties) {
           ]
         }
       };
+
+      if (properties[i].expression.arguments[0].type == "Identifier") {
+        properties[i].expression.arguments[0] = {
+          type: "Literal",
+          value: properties[i].expression.arguments[0].name.replace(/[\"\']/g,""),
+          raw: "'" + properties[i].expression.arguments[0].name.replace(/[\"\']/g,"") + "'"
+        };
+      }
+
       checkFixTree(n2.properties);
       continue;
     }
 
     // Before/After
-    if ((n1.type == "Property") && (((n1.key || { }).name || '').match(/^before|after/))) {
+    if ( (n1.type == "Property")
+         && (((n1.key || { }).name || (n1.key || { }).value || '').match(/^'?"?(before|after|beforeEach|afterEach)'?"?$/))) {
       properties[i] = {
         "type": "ExpressionStatement",
         "expression": {
           "type": "CallExpression",
           "callee": {
             "type": "Identifier",
-            "name": "beforeEach"
+            "name": n1.key.value || n1.key.name
           },
           "arguments": [ n1.value ]
         }
       };
-      continue
+      continue;
     }
 
     // It block
@@ -86,6 +96,14 @@ var checkFixTree = function(properties) {
           ]
         }
       };
+
+      if (properties[i].expression.arguments[0].type == "Identifier") {
+        properties[i].expression.arguments[0] = {
+          type: "Literal",
+          value: properties[i].expression.arguments[0].name.replace(/[\"\']/g,""),
+          raw: "'" + properties[i].expression.arguments[0].name.replace(/[\"\']/g,"") + "'"
+        };
+      }
       continue;
     }
   }
@@ -94,12 +112,15 @@ var checkFixTree = function(properties) {
 var files = process.argv;
 files.shift(); files.shift();
 files.forEach(function(filePath) {
+  console.log("Processing", filePath);
   var code = fs.readFileSync(filePath);
 
-  var astTree = esprima.parse(code);
+  var astTree = esprima.parse(code, {range: true, tokens: true, comment: true});
+  astTree = escodegen.attachComments(astTree, astTree.comments, astTree.tokens);
   convertType(astTree);
-  var newCode = escodegen.generate(astTree, { format: { indent: { style: '  ' } } });
-  newCode = newCode.replace(/^( *(describe|it|before|after|beforeEach|afterEach))/gmi, "\n$1");
+  // console.log(JSON.stringify(astTree,null,2))
+  var newCode = escodegen.generate(astTree, { comment: true, format: { indent: { style: '  ' } } });
+  newCode = newCode.replace(/^( *(describe|it|before|after|beforeEach|afterEach)\()/gmi, "\n$1");
 
   fs.writeFileSync(filePath, newCode);
 });
